@@ -166,7 +166,7 @@ def get_file(fileserver_name: str, fileserver_address: str, file_path: str):
         System exceptions about connection
 
     Returns:
-        str: contents of the response
+        bytes: contents of the response
     """
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect(fileserver_address)
@@ -199,7 +199,6 @@ def get_file(fileserver_name: str, fileserver_address: str, file_path: str):
     for _ in range(length):
         content += client.recv(length)
 
-    content = content.decode(ENCODING)
     process_response(response_status, content)
     return content
 
@@ -286,7 +285,7 @@ def process_get_file_exceptions(e: Exception):
         eprint(str(e))
         exit(1)
 
-def print_to_file(content: str, name: str, debug: bool):
+def print_to_file(content: bytes, name: str, debug: bool):
     """Create file with folder structure if necessary and write content to it.
 
     Args:
@@ -296,7 +295,7 @@ def print_to_file(content: str, name: str, debug: bool):
     # create folder structure if necessary
     if not debug:
         Path(os.path.dirname(name)).mkdir(parents=True, exist_ok=True)
-        with open(name, "w") as file:
+        with open(name, "wb") as file:
             file.write(content)
     else:
         print(f"File: {name}")
@@ -353,7 +352,7 @@ if __name__ == "__main__":
     else:
         # Get all files
         try:
-            contents = get_file(fileserver_name, fileserver_address, "index")
+            contents = get_file(fileserver_name, fileserver_address, "index").decode(ENCODING)
         except Exception as e:
             process_get_file_exceptions(e)
 
