@@ -131,8 +131,6 @@ def process_response(file_path: str, response_status: str, content: str):
         raise ServerErrorException(content)
     
     elif response_status == "Success":
-        eprint("Success")
-        eprint(content)
         return
 
     else:
@@ -185,8 +183,11 @@ def get_file(fileserver_name: str, file_path: str, fileserver_address: str):
     if receive_line(client) != "":
         raise InvalidFormatException
 
-    content = client.recv(length).decode(ENCODING)
+    content = b""
+    for _ in range(length):
+        content += client.recv(length)
 
+    content = content.decode(ENCODING)
     process_response(file_path, response_status, content)
     return content
 
@@ -231,6 +232,47 @@ def nsp_request(fileserver_name: str, nameserver_addr: str) -> str:
     response = client.recv(54).decode()
     return response
 
+def process_get_file_exceptions(e: Exception):
+    """Prints description of error to stderr
+
+    Args:
+        e (Exception): Exception that occured
+    """
+    exception = e.__class__.__name__
+    if exception == "InvalidHeaderException":
+        eprint("[ERROR] Invalid response header.")
+        exit(1)
+    if exception == "InvalidProtocolException":
+        eprint("[ERROR] Invalid protocol.")
+        exit(1)
+    if exception == "InvalidFormatException":
+        eprint("[ERROR] Invalid format.")
+        exit(1)
+    if exception == "BadRequestException":
+        eprint("[ERROR] File request failed.")
+        eprint("Error message:")
+        eprint(e.message)
+        exit(1)
+    if exception == "NotFoundException":
+        eprint(f"[ERROR] File was not found on the server.")
+        eprint("Error message:")
+        eprint(e.message)
+        exit(1)
+    if exception == "ServerErrorException":
+        eprint("[ERROR] Server could not comply.")
+        eprint("Error message:")
+        eprint(e.message)
+        exit(1)
+    if exception == "NotRecognizedException":
+        eprint(f"Message not recognized.")
+        eprint("Message contents:")
+        eprint(e.message)
+        exit(1)
+
+def dump_file(content: str, name: str):
+    with open(name, "w") as file:
+        file.write(content)
+
 if __name__ == "__main__":
 
     ENCODING = "utf-8"
@@ -272,40 +314,24 @@ if __name__ == "__main__":
         eprint("[ERROR] Invalid nameserver response.")
         exit(1)
 
-    try:
-        contents = get_file(fileserver_name, file_path, fileserver_address)
-    except InvalidHeaderException:
-        eprint("[ERROR] Invalid response header.")
-        exit(1)
+    if file_path != "*":
+        try:
+            contents = get_file(fileserver_name, file_path, fileserver_address)
+        except Exception as e:
+            process_get_file_exceptions(e)
 
-    except InvalidProtocolException:
-        eprint("[ERROR] Invalid protocol.")
-        exit(1)
+        dump_file(contents, file_path)
 
-    except InvalidFormatException:
-        eprint("[ERROR] Invalid format.")
-        exit(1)
+    else:
+        pass
+        contents = get_file(fileserver_name, "index", fileserver_address)
 
-    except BadRequestException as e:
-        eprint("[ERROR] File request failed.")
-        eprint("Error message:")
-        eprint(e.message)
-        exit(1)
+        files = contents.strip().split("\r\n")
 
-    except NotFoundException as e:
-        eprint(f"[ERROR] File {file_path} was not found on the server.")
-        eprint("Error message:")
-        eprint(e.message)
-        exit(1)
+        for file in files:
+            try:
+                contents = get_file(fileserver_name, file, fileserver_address)
+            except Exception as e:
+                process_get_file_exceptions(e)
+            dump_file(contents, file)
 
-    except ServerErrorException as e:
-        eprint("[ERROR] Server could not comply.")
-        eprint("Error message:")
-        eprint(e.message)
-        exit(1)
-        
-    except NotRecognizedException as e:
-        eprint(f"Message not recognized.")
-        eprint("Message contents:")
-        eprint(e.message)
-        exit(1)
