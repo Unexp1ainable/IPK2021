@@ -1,9 +1,9 @@
 import argparse
-from os import device_encoding
 import os
 from pathlib import Path
 import socket
 from sys import stderr
+from traceback import print_exc
 
 class ExceptionWithMessage(Exception):
     def __init__(self, message = "") -> None:
@@ -17,11 +17,10 @@ class NotFoundException(ExceptionWithMessage):
 
 class ServerErrorException(ExceptionWithMessage):
     pass
-
-class InvalidFormatException(Exception):
+class NotRecognizedException(ExceptionWithMessage):
     pass
 
-class NotRecognizedException(ExceptionWithMessage):
+class InvalidFormatException(Exception):
     pass
 
 class MissingCRLFException(Exception):
@@ -33,6 +32,7 @@ class InvalidHeaderException(Exception):
 class InvalidProtocolException(Exception):
     pass
 
+
 def parse_arguments():
     """Parse arguments from CLI
 
@@ -40,17 +40,21 @@ def parse_arguments():
         populated namespace: Namespace filled with parsed arguments.
     """
     parser = argparse.ArgumentParser(description="Program for IPK classes.")
-    parser.add_argument("-n", required=True, help="Nameserver")
-    parser.add_argument("-f", required=True, help="SURL")
+    parser.add_argument("-n", required=True, help="Nameserver.")
+    parser.add_argument("-f", required=True, help="SURL.")
+    parser.add_argument("-d", "--debug", action="store_true", help="Prints files to stdin instead of creating new file.")
 
     return parser.parse_args()
 
 
 def parse_SURL(surl: str):
-    """Splits SURL to 3 protocol, server and path substrings. Thows a ValueError exception if SURL is not valid.
+    """Splits SURL to protocol, server and path substrings.
 
     Args:
         surl (str): String representing whole SURL
+    
+    Raises:
+        ValueError: if SURL is not valid
 
     Returns:
         (str, str, str): Protocol, server and path substrings in tuple
@@ -61,16 +65,20 @@ def parse_SURL(surl: str):
 
 
 def parse_address(nameserver: str):
-    """Splits address of the nameserver to ip and port. Throws ValueError if invalid.
+    """Splits address of the nameserver to ip and port.
 
     Args:
         nameserver (str): Address and port of the server in ip_address:port format.
+
+    Raises:
+        ValueError: if nameserver address is not valid
 
     Returns:
         (str, int): Tuple containing (ip, port)
     """
     ip, port = nameserver.split(":", maxsplit=1)
     return (ip, int(port))
+
 
 def eprint(to_print: str):
     """Prints string to STDERR
@@ -81,7 +89,7 @@ def eprint(to_print: str):
     print(to_print, file=stderr)
 
 
-def receive_line(client: socket) -> str:
+def receive_line(client: socket.socket) -> str:
     """Recieves one line ending with CRLF from given TCP socket
 
     Args:
@@ -109,11 +117,10 @@ def receive_line(client: socket) -> str:
     return line.decode(ENCODING)
 
 
-def process_response(file_path: str, response_status: str, content: str):
+def process_response(response_status: str, content: str):
     """Processes response from server and throws appropriate exception if necessary
 
     Args:
-        file_path (str): Path to file requested
         response_status (str): Success, Bad Request, Not Found, Server Error
         content (str): Contents of the response
 
@@ -140,13 +147,13 @@ def process_response(file_path: str, response_status: str, content: str):
 
 
 
-def get_file(fileserver_name: str, file_path: str, fileserver_address: str):
+def get_file(fileserver_name: str, fileserver_address: str, file_path: str):
     """Establishes connection with the fileserver and attempts to receive file.
 
     Args:
         fileserver_name (str): Name of the fileserver
-        file_path (str): Path to file on the fileserver
         fileserver_address (str): IP address of the fileserver
+        file_path (str): Path to file on the fileserver
 
     Raises:
         InvalidHeaderException
@@ -156,19 +163,19 @@ def get_file(fileserver_name: str, file_path: str, fileserver_address: str):
         NotFoundException
         ServerErrorException
         NotRecognizedException
+        System exceptions about connection
 
     Returns:
         str: contents of the response
     """
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect(fileserver_address)
-    client.settimeout(5.0)
-
-    message = assemble_message(fileserver_name, file_path)
+    message = assemble_FSP_message(fileserver_name, file_path)
 
     client.send(message)
     statusline = receive_line(client)
 
+    # line should be: protocol status
     try:
         response_protocol, response_status = statusline.strip().split(maxsplit=1)
     except ValueError:
@@ -177,25 +184,28 @@ def get_file(fileserver_name: str, file_path: str, fileserver_address: str):
     if response_protocol != "FSP/1.0":
         raise InvalidProtocolException
 
+    # format of this line should be: Length: number
     try:
-        length = int(receive_line(client)[7:])
-    except:
+        length = int(receive_line(client)[7:]) 
+    except ValueError:
         raise InvalidFormatException
 
+    # next line should be empty
     if receive_line(client) != "":
         raise InvalidFormatException
 
+    # rest should be contents of the message
     content = b""
     for _ in range(length):
         content += client.recv(length)
 
     content = content.decode(ENCODING)
-    process_response(file_path, response_status, content)
+    process_response(response_status, content)
     return content
 
 
 
-def assemble_message(fileserver_name: str, file_path: str) -> bytes:
+def assemble_FSP_message(fileserver_name: str, file_path: str) -> bytes:
     """Constructs a message for FSP to retrieve a file
 
     Args:
@@ -266,18 +276,33 @@ def process_get_file_exceptions(e: Exception):
         eprint(e.message)
         exit(1)
     if exception == "NotRecognizedException":
-        eprint(f"Message not recognized.")
+        eprint(f"[ERROR] Message not recognized.")
         eprint("Message contents:")
         eprint(e.message)
         exit(1)
+    else:
+        eprint(f"[ERROR] Connection failure.")
+        eprint("Exception message:")
+        eprint(str(e))
+        exit(1)
 
-def dump_file(content: str, name: str):
-    Path(os.path.dirname(name)).mkdir(parents=True, exist_ok=True)
-    with open(name, "w") as file:
-        file.write(content)
+def print_to_file(content: str, name: str, debug: bool):
+    """Create file with folder structure if necessary and write content to it.
+
+    Args:
+        content (str): Content to be written into file
+        name (str): path to file(including name of the file)
+    """
+    # create folder structure if necessary
+    if not debug:
+        Path(os.path.dirname(name)).mkdir(parents=True, exist_ok=True)
+        with open(name, "w") as file:
+            file.write(content)
+    else:
+        print(f"File: {name}")
+        print(content)
 
 if __name__ == "__main__":
-
     ENCODING = "utf-8"
     args = parse_arguments()
 
@@ -292,7 +317,6 @@ if __name__ == "__main__":
     except ValueError:
         eprint("[ERROR] Invalid nameserver address.")
         exit(1)
-
 
     try:
         response = nsp_request(fileserver_name, nameserver_addr)
@@ -318,23 +342,27 @@ if __name__ == "__main__":
         exit(1)
 
     if file_path != "*":
+        # Single file download
         try:
-            contents = get_file(fileserver_name, file_path, fileserver_address)
+            contents = get_file(fileserver_name, fileserver_address, file_path)
         except Exception as e:
             process_get_file_exceptions(e)
 
-        dump_file(contents, file_path)
+        print_to_file(contents, file_path, args.debug)
 
     else:
-        pass
-        contents = get_file(fileserver_name, "index", fileserver_address)
+        # Get all files
+        try:
+            contents = get_file(fileserver_name, fileserver_address, "index")
+        except Exception as e:
+            process_get_file_exceptions(e)
 
         files = contents.strip().split("\r\n")
 
         for file in files:
             try:
-                contents = get_file(fileserver_name, file, fileserver_address)
+                contents = get_file(fileserver_name, fileserver_address, file)
             except Exception as e:
                 process_get_file_exceptions(e)
-            dump_file(contents, file)
+            print_to_file(contents, file, args.debug)
 
