@@ -1,5 +1,7 @@
 import argparse
 from os import device_encoding
+import os
+from pathlib import Path
 import socket
 from sys import stderr
 
@@ -270,6 +272,7 @@ def process_get_file_exceptions(e: Exception):
         exit(1)
 
 def dump_file(content: str, name: str):
+    Path(os.path.dirname(name)).mkdir(parents=True, exist_ok=True)
     with open(name, "w") as file:
         file.write(content)
 
