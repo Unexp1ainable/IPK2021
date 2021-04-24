@@ -46,6 +46,7 @@ const u_char *skip_ether_header(const u_char *bytes);
 
 // ##################### INTERNET ######################
 #define IPv4_ADDRESS_LEN 20
+#define NO_PORT 0
 void extract_ipv4(u_char *where, std::string *ip);
 
 void get_ipv4(u_char *packet, char *src_ip, char *dst_ip);

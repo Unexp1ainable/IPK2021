@@ -65,9 +65,8 @@ int main(int argc, char *argv[])
 void icmp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h, char *src_ip, char *dst_ip)
 {
     cout << "ICMP\n";
-
-    int t = *packet;
-    cout << t << endl;
+    // will print icmp header
+    print_payload(packet, h->caplen-h_length, h, NO_PORT, NO_PORT, src_ip, dst_ip);
 }
 
 void udp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h, char *src_ip, char *dst_ip)
