@@ -6,11 +6,11 @@
 #include "packet_lib.h"
 #include "sniffer_classes.h"
 
-void icmp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h);
+void icmp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h, char *src_ip, char *dst_ip);
 
-void udp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h);
+void udp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h, char *src_ip, char *dst_ip);
 
-void tcp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h);
+void tcp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h, char *src_ip, char *dst_ip);
 
 void ipv4_handler(const u_char *bytes, const struct pcap_pkthdr *h);
 

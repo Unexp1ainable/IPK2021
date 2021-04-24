@@ -62,29 +62,39 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void icmp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h)
+void icmp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h, char *src_ip, char *dst_ip)
 {
     cout << "ICMP\n";
+
     int t = *packet;
     cout << t << endl;
 }
 
-void udp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h)
+void udp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h, char *src_ip, char *dst_ip)
 {
     cout << "UDP\n";
     const u_char *payload = skip_udp_header(packet);
     int payload_length = get_udp_length(const_cast<u_char *>(packet));
-    print_payload(payload, payload_length);
+
+    int src_port;
+    int dst_port;
+
+    get_ports(const_cast<u_char *>(packet), &src_port, &dst_port);
+    print_payload(payload, payload_length, h, src_port, dst_port, src_ip, dst_ip);
 }
 
-void tcp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h)
+void tcp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h, char *src_ip, char *dst_ip)
 {
     cout << "TCP\n";
     unsigned int tcp_header_length = get_tcp_header_length(packet);
     const u_char *payload = packet + tcp_header_length;
-    auto size = h->caplen - h_length - tcp_header_length;
-    cout << size;
-    print_payload(payload, size);
+    auto payload_length = h->caplen - h_length - tcp_header_length;
+
+    int src_port;
+    int dst_port;
+    get_ports(const_cast<u_char *>(packet), &src_port, &dst_port);
+
+    print_payload(payload, payload_length, h, src_port, dst_port, src_ip, dst_ip);
 }
 
 void ipv4_handler(const u_char *bytes, const struct pcap_pkthdr *h)
@@ -94,20 +104,26 @@ void ipv4_handler(const u_char *bytes, const struct pcap_pkthdr *h)
     int ip_protocol = get_ipv4_protocol(ip_header);
     int ip_header_length = get_ipv4_header_length(ip_header);
     const u_char *next_header = ip_header + ip_header_length;
+    char src_ip[IPv4_ADDRESS_LEN];
+    char dst_ip[IPv4_ADDRESS_LEN];
+    get_ipv4(const_cast<u_char *>(ip_header), src_ip, dst_ip);
 
     switch (ip_protocol)
     {
     case IPPROTO_ICMP:
     {
-        icmp_handler(next_header, ETH_H_LEN + ip_header_length, h);
+        icmp_handler(next_header, ETH_H_LEN + ip_header_length, h, src_ip, dst_ip);
+        break;
     }
     case IPPROTO_UDP:
     {
-        udp_handler(next_header, ETH_H_LEN + ip_header_length, h);
+        udp_handler(next_header, ETH_H_LEN + ip_header_length, h, src_ip, dst_ip);
+        break;
     }
     case IPPROTO_TCP:
     {
-        tcp_handler(next_header, ETH_H_LEN + ip_header_length, h);
+        tcp_handler(next_header, ETH_H_LEN + ip_header_length, h, src_ip, dst_ip);
+        break;
     }
 
     default:
@@ -122,7 +138,7 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *byt
 
     if (ether_type == ETHERTYPE_IP)
     {
-        ipv4_handler(bytes,h);
+        ipv4_handler(bytes, h);
     }
     else if (ether_type == ETHERTYPE_IPV6)
     {

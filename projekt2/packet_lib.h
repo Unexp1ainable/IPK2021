@@ -7,6 +7,8 @@
 #include <net/ethernet.h>
 #include <algorithm>
 #include <math.h>
+#include <string>
+#include <string.h>
 
 // protocol identifiers
 #define IPV6_TCP 6
@@ -21,7 +23,6 @@
  * 
  */
 const std::vector<int> IPV6_EXT_H_OTHERS = {0, 43, 44, 50, 51, 60, 135};
-
 
 // ##################### DATA LINK ######################
 // ================== ETHERNET ==================
@@ -43,9 +44,11 @@ const u_char *skip_ether_header(const u_char *bytes);
 
 // ================== ARP ==================
 
-
-
 // ##################### INTERNET ######################
+#define IPv4_ADDRESS_LEN 20
+void extract_ipv4(u_char *where, std::string *ip);
+
+void get_ipv4(u_char *packet, char *src_ip, char *dst_ip);
 // ================== IPv4 ==================
 /**
  * @brief Get the next layer protocol
@@ -73,7 +76,6 @@ int get_ipv4_header_length(const u_char *ip_header);
 
 // ================== ICMP ==================
 
-
 // ##################### NETWORK ######################
 // ================== UDP ==================
 /**
@@ -92,6 +94,8 @@ int get_udp_length(u_char *udp_header);
  */
 const u_char *skip_udp_header(const u_char *udp_header);
 
+void get_ports(u_char *packet, int *src_port, int *dst_port);
+
 // ================== TCP ==================
 /**
  * @brief Get the tcp header length object
@@ -101,7 +105,6 @@ const u_char *skip_udp_header(const u_char *udp_header);
  */
 int get_tcp_header_length(const u_char *tcp_header);
 
-
 // ########################### MISC ##################################
 /**
  * @brief Prints payload to the stdout in required format
@@ -109,8 +112,7 @@ int get_tcp_header_length(const u_char *tcp_header);
  * @param payload Pointer to the beginning of the payload
  * @param length Length of the payload
  */
-void print_payload(const u_char *payload, const unsigned int length);
-
+void print_payload(const u_char *payload, const unsigned int length, const struct pcap_pkthdr *h, int src_port, int dst_port, char *src_ip, char *dst_ip);
 
 /**
  * @brief Stuff to happen with the captured packet
