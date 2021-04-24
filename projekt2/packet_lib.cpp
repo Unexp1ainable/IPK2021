@@ -74,7 +74,7 @@ void print_payload(const u_char *payload, const unsigned int length, const struc
     {
         printf("0x%.4x: ", j * 16);
         //hex print
-        for (int i = 16 * j; i < length; i++)
+        for (int i = 16 * j; i < j*16+16; i++)
         {
             printf("%.2x", *(tmp_ptr + i));
             cout << " ";
@@ -83,7 +83,7 @@ void print_payload(const u_char *payload, const unsigned int length, const struc
         cout << "  ";
 
         // ascii print
-        for (int i = 16 * j; i < length; i++)
+        for (int i = 16 * j; i < j*16+16; i++)
         {
             char to_print = *(tmp_ptr + i);
 
