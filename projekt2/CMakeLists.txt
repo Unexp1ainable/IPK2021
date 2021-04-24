@@ -5,7 +5,7 @@ include(CTest)
 enable_testing()
 include(FindPCAP.cmake)
 
-add_executable(ipk-sniffer ipk-sniffer.cpp sniffer_classes.cpp)
+add_executable(ipk-sniffer ipk-sniffer.cpp packet_lib.cpp sniffer_classes.cpp  )
 target_link_libraries(ipk-sniffer ${PCAP_LIBRARY})
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})

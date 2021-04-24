@@ -1,8 +1,18 @@
 #ifndef IPK_SNIFFER_H
 #define IPK_SNIFFER_H
 
-#include "sniffer_classes.h"
 #include <memory>
+#include <pcap.h>
+#include "packet_lib.h"
+#include "sniffer_classes.h"
+
+void icmp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h);
+
+void udp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h);
+
+void tcp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h);
+
+void ipv4_handler(const u_char *bytes, const struct pcap_pkthdr *h);
 
 /**
  * @brief Stuff to happen with the captured packet

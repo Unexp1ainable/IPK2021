@@ -1,5 +1,4 @@
 #include <iostream>
-#include "ipk-sniffer.h"
 #include <pcap.h>
 #include <getopt.h>
 #include <vector>
@@ -9,12 +8,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <math.h>
-
-#define IPV6_TCP 6
-#define IPV6_UDP 17
-#define IPV6_ICMP 58
-#define IPV6_NONEXT 59
-const std::vector<int> IPV6_EXT_H_OTHERS = {0, 43, 44, 50, 51, 60, 135};
+#include "ipk-sniffer.h"
 
 using std::cerr;
 using std::cout;
@@ -68,148 +62,67 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-/**
- * @brief Get the EtherType
- * 
- * @param bytes Packet
- * @return uint16_t EtherType
- */
-uint16_t get_ether_type(const u_char *bytes)
+void icmp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h)
 {
-    struct ether_header *eth_header;
-    eth_header = (struct ether_header *)bytes;
-
-    return ntohs(eth_header->ether_type);
+    cout << "ICMP\n";
+    int t = *packet;
+    cout << t << endl;
 }
 
-
-/**
- * @brief Skips ethernet header of packet
- * 
- * @param bytes Packet
- * @return const u_char* Pointer to the beginning of next header
- */
-inline const u_char *skip_ether_header(const u_char *bytes)
+void udp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h)
 {
-    int ether_header_length = 14;
-    return bytes + ether_header_length;
+    cout << "UDP\n";
+    const u_char *payload = skip_udp_header(packet);
+    int payload_length = get_udp_length(const_cast<u_char *>(packet));
+    print_payload(payload, payload_length);
 }
 
-inline int get_ipv4_protocol(const u_char *ip_header)
+void tcp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h)
 {
-    return *(ip_header + 9);
+    cout << "TCP\n";
+    unsigned int tcp_header_length = get_tcp_header_length(packet);
+    const u_char *payload = packet + tcp_header_length;
+    auto size = h->caplen - h_length - tcp_header_length;
+    cout << size;
+    print_payload(payload, size);
 }
 
-inline int get_ipv4_total_length(u_char *ip_header)
+void ipv4_handler(const u_char *bytes, const struct pcap_pkthdr *h)
 {
-    uint16_t *len = reinterpret_cast<uint16_t*>(ip_header + 4);
-    return (ntohs(*len))-8;
-}
+    printf("IPv4 ");
+    const u_char *ip_header = skip_ether_header(bytes);
+    int ip_protocol = get_ipv4_protocol(ip_header);
+    int ip_header_length = get_ipv4_header_length(ip_header);
+    const u_char *next_header = ip_header + ip_header_length;
 
-inline int get_ip_header_length(const u_char *ip_header)
-{
-    int ihl = (*ip_header) & 0x0F;
-    return ihl * 4;
-}
-
-inline int get_udp_length(u_char *udp_header)
-{
-    uint16_t *len = reinterpret_cast<uint16_t*>(udp_header + 4);
-    return (ntohs(*len))-8;
-}
-
-inline const u_char *skip_udp_header(const u_char *udp_header)
-{
-    return udp_header + 8;
-}
-
-void print_payload(const u_char *payload, const unsigned int length)
-{
-    u_char *tmp_ptr = const_cast<u_char *>(payload);
-    for (int j = 0; j < ceil(static_cast<float>(length)/16); j++)
+    switch (ip_protocol)
     {
-        printf("0x%.4x: ", j*16);
-        //hex print
-        for (int i = 16*j; i < length; i++)
-        {
-            printf("%.2x", *(tmp_ptr + i));
-            cout << " ";
-        }
+    case IPPROTO_ICMP:
+    {
+        icmp_handler(next_header, ETH_H_LEN + ip_header_length, h);
+    }
+    case IPPROTO_UDP:
+    {
+        udp_handler(next_header, ETH_H_LEN + ip_header_length, h);
+    }
+    case IPPROTO_TCP:
+    {
+        tcp_handler(next_header, ETH_H_LEN + ip_header_length, h);
+    }
 
-        cout << "  ";
-
-        // ascii print
-        for (int i = 16*j; i < length; i++)
-        {
-            char to_print = *(tmp_ptr + i);
-
-            if (isprint(to_print))
-            {
-                cout << *(tmp_ptr + i);
-            }
-            else
-            {
-                cout << ".";
-            }
-        }
-
-        tmp_ptr += 16;
-        cout << endl;
+    default:
+        break;
     }
 }
-
-inline int get_tcp_header_length(const u_char *tcp_header){
-    return ((*(tcp_header+12)) >> 4)*4;
-}
-
 
 void packet_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes)
 {
 
     uint16_t ether_type = get_ether_type(bytes);
-    unsigned int ether_header_length = 14;
 
     if (ether_type == ETHERTYPE_IP)
     {
-        printf("IPv4 ");
-        const u_char *ip_header = skip_ether_header(bytes);
-        int ip_protocol = get_ipv4_protocol(ip_header);
-        int ip_header_length = get_ip_header_length(ip_header);
-
-        switch (ip_protocol)
-        {
-        case IPPROTO_ICMP:
-        {
-            cout << "ICMP\n";
-            const u_char *icmp_header = ip_header + ip_header_length;
-            int t = *icmp_header;
-            cout << t << endl;
-            break;
-        }
-        case IPPROTO_UDP:
-        {
-            cout << "UDP\n";
-            const u_char *udp_header = ip_header + ip_header_length;
-            const u_char *payload = skip_udp_header(udp_header);
-            int payload_length = get_udp_length(const_cast<u_char*>(udp_header));
-            print_payload(payload, payload_length);
-            break;
-        }
-        case IPPROTO_TCP:
-        {
-            cout << "TCP\n";
-            const u_char *tcp_header = ip_header + ip_header_length;
-            unsigned int tcp_header_length = get_tcp_header_length(tcp_header);
-            const u_char *payload = tcp_header+tcp_header_length;
-            auto size = h->caplen-ether_header_length-ip_header_length-tcp_header_length;
-            cout << size << endl;
-            print_payload(payload, size);
-            break;
-        }
-
-        default:
-            break;
-        }
+        ipv4_handler(bytes,h);
     }
     else if (ether_type == ETHERTYPE_IPV6)
     {
