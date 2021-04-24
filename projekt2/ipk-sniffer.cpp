@@ -7,6 +7,8 @@
 #include <memory>
 #include <net/ethernet.h>
 #include <algorithm>
+#include <iomanip>
+#include <math.h>
 
 #define IPV6_TCP 6
 #define IPV6_UDP 17
@@ -66,36 +68,137 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void packet_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes)
+/**
+ * @brief Get the EtherType
+ * 
+ * @param bytes Packet
+ * @return uint16_t EtherType
+ */
+uint16_t get_ether_type(const u_char *bytes)
 {
     struct ether_header *eth_header;
     eth_header = (struct ether_header *)bytes;
 
-    if (ntohs(eth_header->ether_type) == ETHERTYPE_IP)
+    return ntohs(eth_header->ether_type);
+}
+
+/**
+ * @brief Skips ethernet header of packet
+ * 
+ * @param bytes Packet
+ * @return const u_char* Pointer to the beginning of next header
+ */
+inline const u_char *skip_ether_header(const u_char *bytes)
+{
+    int ether_header_length = 14;
+    return bytes + ether_header_length;
+}
+
+inline int get_ipv4_protocol(const u_char *ip_header)
+{
+    return *(ip_header + 9);
+}
+
+inline int get_ipv4_total_length(const u_char *ip_header)
+{
+    return *(ip_header + 2);    // not good
+}
+
+inline const u_char *skip_ipv4_header(const u_char *ip_header)
+{
+    int ihl = (*ip_header) & 0x0F;
+    return ip_header + ihl * 4;
+}
+
+inline int get_udp_length(u_char *udp_header)
+{
+    auto a = udp_header + 4;
+    uint16_t *len = reinterpret_cast<uint16_t*>(a);
+    return (ntohs(*len))-8;
+}
+
+inline const u_char *skip_udp_header(const u_char *udp_header)
+{
+    return udp_header + 8;
+}
+
+void print_payload(const u_char *payload, const unsigned int length)
+{
+    u_char *tmp_ptr = const_cast<u_char *>(payload);
+    for (int j = 0; j < ceil(static_cast<float>(length)/16); j++)
+    {
+        printf("0x%.4x: ", j*16);
+        //hex print
+        for (int i = 16*j; i < length; i++)
+        {
+            printf("%.2x", *(tmp_ptr + i));
+            cout << " ";
+        }
+
+        cout << "  ";
+
+        // ascii print
+        for (int i = 16*j; i < length; i++)
+        {
+            char to_print = *(tmp_ptr + i);
+
+            if (isprint(to_print))
+            {
+                cout << *(tmp_ptr + i);
+            }
+            else
+            {
+                cout << ".";
+            }
+        }
+
+        tmp_ptr += 16;
+        cout << endl;
+    }
+}
+
+void packet_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes)
+{
+
+    uint16_t ether_type = get_ether_type(bytes);
+
+    if (ether_type == ETHERTYPE_IP)
     {
         printf("IPv4 ");
-        const u_char *ip = bytes + 14;
-        int protocol = *(ip + 9);
-        int ihl = (*ip) & 0x0F;
-        cout << ihl << endl;
+        const u_char *ip_header = skip_ether_header(bytes);
+        int ip_protocol = get_ipv4_protocol(ip_header);
+        int ip_length = get_ipv4_total_length(ip_header);
 
-        switch (protocol)
+        switch (ip_protocol)
         {
         case IPPROTO_ICMP:
+        {
             cout << "ICMP\n";
+            const u_char *icmp_header = skip_ipv4_header(ip_header);
+            int t = *icmp_header;
+            cout << t << endl;
             break;
+        }
         case IPPROTO_UDP:
+        {
             cout << "UDP\n";
+            const u_char *udp_header = skip_ipv4_header(ip_header);
+            const u_char *payload = skip_udp_header(udp_header);
+            int payload_length = get_udp_length(const_cast<u_char*>(udp_header));
+            print_payload(payload, payload_length);
             break;
+        }
         case IPPROTO_TCP:
+        {
             cout << "TCP\n";
             break;
+        }
 
         default:
             break;
         }
     }
-    else if (ntohs(eth_header->ether_type) == ETHERTYPE_IPV6)
+    else if (ether_type == ETHERTYPE_IPV6)
     {
         cout << "IPv6 ";
         const u_char *ip = bytes + 14;
@@ -131,33 +234,32 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *byt
                     n_header_p = (n_header_p + *(n_header_p + 1));
                     n_header = *n_header_p;
                 }
-                else {
+                else
+                {
                     end = true;
                 }
-                
+
                 break;
             }
 
         } while (!end);
     }
-    else if (ntohs(eth_header->ether_type) == ETHERTYPE_ARP)
+    else if (ether_type == ETHERTYPE_ARP)
     {
         printf("ARP\n");
     }
 }
 
-
-
-bool is_other_ext(int header) {
+bool is_other_ext(int header)
+{
     auto begin_iterator = IPV6_EXT_H_OTHERS.begin();
     auto end_iterator = IPV6_EXT_H_OTHERS.end();
-    if (std::find(begin_iterator, end_iterator, header) != end_iterator){
+    if (std::find(begin_iterator, end_iterator, header) != end_iterator)
+    {
         return true;
     }
     return false;
 }
-
-
 
 void print_devices()
 {
