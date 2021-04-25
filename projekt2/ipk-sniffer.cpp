@@ -58,6 +58,72 @@ int main(int argc, char *argv[])
     // transform it to unique ptr, so it is automatically closed at the end
     auto interface = std::unique_ptr<pcap_t, del_pcap_handle>(interface_unsafe, del_pcap_handle());
 
+    std::string filter_str{};
+    bool next = false;
+    filter_str.append(std::string{"("});
+    if (args->arp)
+    {
+        if (next)
+            filter_str.append(std::string{" or"});
+        else
+            next = true;
+
+        filter_str.append(std::string{" arp"});
+    }
+    if (args->icmp)
+    {
+        if (next)
+            filter_str.append(std::string{" or"});
+        else
+            next = true;
+        filter_str.append(std::string{" icmp"});
+    }
+    if (args->udp)
+    {
+        if (next)
+            filter_str.append(std::string{" or"});
+        else
+            next = true;
+        filter_str.append(std::string{" udp"});
+    }
+    if (args->tcp)
+    {
+        if (next)
+            filter_str.append(std::string{" or"});
+        else
+            next = true;
+        filter_str.append(std::string{" tcp"});
+    }
+    if (args->icmp)
+    {
+        if (next)
+            filter_str.append(std::string{" or"});
+        else
+            next = true;
+        filter_str.append(std::string{" icmp or icmp6"});
+    }
+    filter_str.append(std::string{")"});
+
+    if (args->port != -1)
+    {
+        filter_str.append(std::string{" and port "});
+        filter_str.append(std::to_string(args->port));
+    }
+    cout << filter_str << endl;
+
+    struct bpf_program fp;
+    if (pcap_compile(interface.get(), &fp, filter_str.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1)
+    {
+        cerr << "Failed to compile filter.\n";
+        return 1;
+    }
+
+    if (pcap_setfilter(interface.get(), &fp) == -1)
+    {
+        cerr << "Failed to set filter.\n";
+        return 1;
+    }
+
     int retcode = pcap_loop(interface.get(), args->number, packet_handler, NULL);
     return 0;
 }
@@ -138,8 +204,8 @@ void ipv6_handler(const u_char *bytes, const struct pcap_pkthdr *h)
 
     char ipv6_src[INET6_ADDRSTRLEN];
     char ipv6_dst[INET6_ADDRSTRLEN];
-    inet_ntop(AF_INET6, ipv6_header+8, ipv6_src, INET6_ADDRSTRLEN);
-    inet_ntop(AF_INET6, ipv6_header+24, ipv6_dst, INET6_ADDRSTRLEN);
+    inet_ntop(AF_INET6, ipv6_header + 8, ipv6_src, INET6_ADDRSTRLEN);
+    inet_ntop(AF_INET6, ipv6_header + 24, ipv6_dst, INET6_ADDRSTRLEN);
 
     u_char *n_header_ptr = const_cast<u_char *>(ipv6_header + 6);
     int n_header_type = *(n_header_ptr);
@@ -157,12 +223,12 @@ void ipv6_handler(const u_char *bytes, const struct pcap_pkthdr *h)
             break;
         case IPV6_UDP:
             cout << "UDP\n";
-            udp_handler(ipv6_header + ipv6_hlen , ETH_HLEN + ipv6_hlen, h, ipv6_src, ipv6_dst);
+            udp_handler(ipv6_header + ipv6_hlen, ETH_HLEN + ipv6_hlen, h, ipv6_src, ipv6_dst);
             end = true;
             break;
         case IPV6_ICMP:
             cout << "ICMP\n";
-            icmp_handler(ipv6_header + ipv6_hlen , ETH_HLEN + ipv6_hlen, h, ipv6_src, ipv6_dst);
+            icmp_handler(ipv6_header + ipv6_hlen, ETH_HLEN + ipv6_hlen, h, ipv6_src, ipv6_dst);
             end = true;
             break;
         case IPV6_NONEXT:
@@ -190,30 +256,34 @@ void ipv6_handler(const u_char *bytes, const struct pcap_pkthdr *h)
     } while (!end);
 }
 
-void get_mac_address(u_char bytes,char *dest){
-    
+void get_mac_address(const u_char *bytes, char *dest)
+{
+    sprintf(dest, "%x-%x-%x-%x-%x-%x", *bytes, *(bytes + 1), *(bytes + 2), *(bytes + 3), *(bytes + 4), *(bytes + 5));
 }
 
-void arp_handler(const u_char *bytes, const struct pcap_pkthdr *h){
-    printf("ARP\n");
+void arp_handler(const u_char *bytes, const struct pcap_pkthdr *h)
+{
+    int MAC_ADD_LEN = 19;
     const u_char *arp_header = bytes + ETH_HLEN;
     char ipv4_src[INET_ADDRSTRLEN];
     char ipv4_dst[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET,arp_header+14, ipv4_src, INET_ADDRSTRLEN);
-    inet_ntop(AF_INET, arp_header+24, ipv4_dst, INET_ADDRSTRLEN);
+    inet_ntop(AF_INET, arp_header + 14, ipv4_src, INET_ADDRSTRLEN);
+    inet_ntop(AF_INET, arp_header + 24, ipv4_dst, INET_ADDRSTRLEN);
 
-    uint16_t *op = reinterpret_cast<uint16_t *>(const_cast<u_char*>(arp_header) + 6);
+    char mac_add_src[MAC_ADD_LEN];
+    get_mac_address(arp_header + 8, mac_add_src);
+
+    uint16_t *op = reinterpret_cast<uint16_t *>(const_cast<u_char *>(arp_header) + 6);
     int operation = ntohs(*op);
 
     if (operation == 1)
     {
-        cout << "ARP Request: Who has " << ipv4_dst << "? Tell " << ipv4_src << "\n ";
-    } else if (operation == 2) {
-        cout << "ARP Reply:" << ipv4_src << "is at " << ipv4_src << "\n ";
+        cout << "ARP Request: Who has " << ipv4_dst << "? Tell " << ipv4_src << "\n";
     }
-    
-
-    cout << "src: " << ipv4_src << ", dst: " << ipv4_dst << "  Operation: " << operation << endl;
+    else if (operation == 2)
+    {
+        cout << "ARP Reply: " << ipv4_src << " is at " << mac_add_src << "\n";
+    }
 }
 
 void packet_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes)

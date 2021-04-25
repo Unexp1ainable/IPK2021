@@ -26,6 +26,31 @@ const u_char *skip_ether_header(const u_char *bytes)
     return bytes + ether_header_length;
 }
 
+void extract_ipv4(u_char *where, std::string *ip)
+{
+    int n;
+    for (int i = 0; i < 3; i++)
+    {
+        n = static_cast<int>(*where);
+        ip->append(std::string(std::to_string(n)));
+        ip->append(1, '.');
+        where++;
+    }
+    n = static_cast<int>(*where);
+    ip->append(std::string(std::to_string(n)));
+}
+
+void get_ipv4(u_char *packet, char *src_ip, char *dst_ip)
+{
+    auto sip = std::string{};
+    auto dip = std::string{};
+    extract_ipv4(packet + 12, &sip);
+    extract_ipv4(packet + 16, &dip);
+    strncpy(src_ip, sip.c_str(), IPv4_ADDRESS_LEN);
+    strncpy(dst_ip, dip.c_str(), IPv4_ADDRESS_LEN);
+}
+
+
 int get_ipv4_protocol(const u_char *ip_header)
 {
     return *(ip_header + 9);
@@ -124,26 +149,7 @@ int get_tcp_header_length(const u_char *tcp_header)
     return ((*(tcp_header + 12)) >> 4) * 4;
 }
 
-void extract_ipv4(u_char *where, std::string *ip)
-{
-    int n;
-    for (int i = 0; i < 3; i++)
-    {
-        n = static_cast<int>(*where);
-        ip->append(std::string(std::to_string(n)));
-        ip->append(1, '.');
-        where++;
-    }
-    n = static_cast<int>(*where);
-    ip->append(std::string(std::to_string(n)));
-}
 
-void get_ipv4(u_char *packet, char *src_ip, char *dst_ip)
-{
-    auto sip = std::string{};
-    auto dip = std::string{};
-    extract_ipv4(packet + 12, &sip);
-    extract_ipv4(packet + 16, &dip);
-    strncpy(src_ip, sip.c_str(), IPv4_ADDRESS_LEN);
-    strncpy(dst_ip, dip.c_str(), IPv4_ADDRESS_LEN);
-}
+
+
+
