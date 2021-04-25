@@ -6,13 +6,13 @@
 #include "packet_lib.h"
 #include "sniffer_classes.h"
 
-void icmp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h, char *src_ip, char *dst_ip);
-
-void udp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h, char *src_ip, char *dst_ip);
-
-void tcp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h, char *src_ip, char *dst_ip);
-
-void ipv4_handler(const u_char *bytes, const struct pcap_pkthdr *h);
+/**
+ * @brief Assembles string for filter into pcap_compile from given arguments
+ * 
+ * @param filter_str Variable where string will be written
+ * @param args Parsed arguments
+ */
+void assemble_filter_str(std::string *filter_str, Arguments *args);
 
 /**
  * @brief Stuff to happen with the captured packet
@@ -38,6 +38,14 @@ bool is_other_ext(int header);
  */
 void print_devices();
 
+
+/**
+ * @brief Parse arguments
+ * 
+ * @param argc Number of arguments
+ * @param argv Pointer to argument array
+ * @return std::unique_ptr<Arguments> Instance of Arguments class filled with arguments.
+ */
 std::unique_ptr<Arguments> parse_arguments(int argc, char *argv[]);
 
 
