@@ -69,12 +69,28 @@ void print_payload(const u_char *payload, const unsigned int length, const struc
     auto f_time = strftime(timeparttime, 30, "%Y-%m-%dT%H:%M:%S", p_time);
     char secondparttime[30];
     sprintf(secondparttime, ".%i+01:00", h->ts.tv_usec / 1000);
-    printf("%s%s %s : %i > %s : %i, length %i bytes\n", timeparttime, secondparttime, src_ip, src_port, dst_ip, dst_port, length);
-    for (int j = 0; j < ceil(static_cast<float>(length) / 16); j++)
+
+    if (src_port != NO_PORT)
+        printf("%s%s %s : %i > %s : %i, length %i bytes\n", timeparttime, secondparttime, src_ip, src_port, dst_ip, dst_port, length);
+    else
+        printf("%s%s %s : > %s :, length %i bytes\n", timeparttime, secondparttime, src_ip, dst_ip, length);
+
+    int lines = ceil(static_cast<float>(length) / 16);
+    int chars = length;
+    int linechars = 16;
+
+    for (int j = 0; j < lines; j++)
     {
+        if (chars >= 16)
+            linechars = 16;
+        else
+            linechars = chars;
+
+        // offset
         printf("0x%.4x: ", j * 16);
-        //hex print
-        for (int i = 16 * j; i < j*16+16; i++)
+
+        // hex print
+        for (int i = 16 * j; i < j * 16 + linechars; i++)
         {
             printf("%.2x", *(tmp_ptr + i));
             cout << " ";
@@ -83,7 +99,7 @@ void print_payload(const u_char *payload, const unsigned int length, const struc
         cout << "  ";
 
         // ascii print
-        for (int i = 16 * j; i < j*16+16; i++)
+        for (int i = 16 * j; i < j * 16 + linechars; i++)
         {
             char to_print = *(tmp_ptr + i);
 
@@ -98,6 +114,7 @@ void print_payload(const u_char *payload, const unsigned int length, const struc
         }
 
         tmp_ptr += 16;
+        chars -= 16;
         cout << endl;
     }
 }

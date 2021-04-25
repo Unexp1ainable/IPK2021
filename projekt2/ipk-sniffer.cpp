@@ -65,8 +65,8 @@ int main(int argc, char *argv[])
 void icmp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h, char *src_ip, char *dst_ip)
 {
     cout << "ICMP\n";
-    // will print icmp header
-    print_payload(packet, h->caplen-h_length, h, NO_PORT, NO_PORT, src_ip, dst_ip);
+    // will print icmp header as data
+    print_payload(packet, h->caplen - h_length, h, NO_PORT, NO_PORT, src_ip, dst_ip);
 }
 
 void udp_handler(const u_char *packet, unsigned int h_length, const struct pcap_pkthdr *h, char *src_ip, char *dst_ip)
@@ -77,8 +77,8 @@ void udp_handler(const u_char *packet, unsigned int h_length, const struct pcap_
 
     int src_port;
     int dst_port;
-
     get_ports(const_cast<u_char *>(packet), &src_port, &dst_port);
+
     print_payload(payload, payload_length, h, src_port, dst_port, src_ip, dst_ip);
 }
 
@@ -111,23 +111,109 @@ void ipv4_handler(const u_char *bytes, const struct pcap_pkthdr *h)
     {
     case IPPROTO_ICMP:
     {
-        icmp_handler(next_header, ETH_H_LEN + ip_header_length, h, src_ip, dst_ip);
+        icmp_handler(next_header, ETH_HLEN + ip_header_length, h, src_ip, dst_ip);
         break;
     }
     case IPPROTO_UDP:
     {
-        udp_handler(next_header, ETH_H_LEN + ip_header_length, h, src_ip, dst_ip);
+        udp_handler(next_header, ETH_HLEN + ip_header_length, h, src_ip, dst_ip);
         break;
     }
     case IPPROTO_TCP:
     {
-        tcp_handler(next_header, ETH_H_LEN + ip_header_length, h, src_ip, dst_ip);
+        tcp_handler(next_header, ETH_HLEN + ip_header_length, h, src_ip, dst_ip);
         break;
     }
 
     default:
         break;
     }
+}
+
+void ipv6_handler(const u_char *bytes, const struct pcap_pkthdr *h)
+{
+    cout << "IPv6 ";
+    const u_char *ipv6_header = bytes + ETH_HLEN;
+    int ipv6_hlen = 40;
+
+    char ipv6_src[INET6_ADDRSTRLEN];
+    char ipv6_dst[INET6_ADDRSTRLEN];
+    inet_ntop(AF_INET6, ipv6_header+8, ipv6_src, INET6_ADDRSTRLEN);
+    inet_ntop(AF_INET6, ipv6_header+24, ipv6_dst, INET6_ADDRSTRLEN);
+
+    u_char *n_header_ptr = const_cast<u_char *>(ipv6_header + 6);
+    int n_header_type = *(n_header_ptr);
+
+    bool end = false;
+
+    do
+    {
+        switch (n_header_type)
+        {
+        case IPV6_TCP:
+            cout << "TCP\n";
+            tcp_handler(ipv6_header + ipv6_hlen, ETH_HLEN + ipv6_hlen, h, ipv6_src, ipv6_dst);
+            end = true;
+            break;
+        case IPV6_UDP:
+            cout << "UDP\n";
+            udp_handler(ipv6_header + ipv6_hlen , ETH_HLEN + ipv6_hlen, h, ipv6_src, ipv6_dst);
+            end = true;
+            break;
+        case IPV6_ICMP:
+            cout << "ICMP\n";
+            icmp_handler(ipv6_header + ipv6_hlen , ETH_HLEN + ipv6_hlen, h, ipv6_src, ipv6_dst);
+            end = true;
+            break;
+        case IPV6_NONEXT:
+            cout << "Unknown\n";
+            end = true;
+            break;
+
+        default:
+            // check for extension headers
+            if (is_other_ext(n_header_type))
+            {
+                int n_header_length = *(n_header_ptr + 1);
+                n_header_ptr = (n_header_ptr + n_header_length);
+                n_header_type = *n_header_ptr;
+                ipv6_hlen += n_header_length;
+            }
+            else
+            {
+                end = true;
+            }
+
+            break;
+        }
+
+    } while (!end);
+}
+
+void get_mac_address(u_char bytes,char *dest){
+    
+}
+
+void arp_handler(const u_char *bytes, const struct pcap_pkthdr *h){
+    printf("ARP\n");
+    const u_char *arp_header = bytes + ETH_HLEN;
+    char ipv4_src[INET_ADDRSTRLEN];
+    char ipv4_dst[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET,arp_header+14, ipv4_src, INET_ADDRSTRLEN);
+    inet_ntop(AF_INET, arp_header+24, ipv4_dst, INET_ADDRSTRLEN);
+
+    uint16_t *op = reinterpret_cast<uint16_t *>(const_cast<u_char*>(arp_header) + 6);
+    int operation = ntohs(*op);
+
+    if (operation == 1)
+    {
+        cout << "ARP Request: Who has " << ipv4_dst << "? Tell " << ipv4_src << "\n ";
+    } else if (operation == 2) {
+        cout << "ARP Reply:" << ipv4_src << "is at " << ipv4_src << "\n ";
+    }
+    
+
+    cout << "src: " << ipv4_src << ", dst: " << ipv4_dst << "  Operation: " << operation << endl;
 }
 
 void packet_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes)
@@ -141,53 +227,11 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *byt
     }
     else if (ether_type == ETHERTYPE_IPV6)
     {
-        cout << "IPv6 ";
-        const u_char *ip = bytes + 14;
-        u_char *n_header_p = const_cast<u_char *>(ip + 6);
-        int n_header = *(n_header_p);
-
-        bool end = false;
-
-        do
-        {
-            switch (n_header)
-            {
-            case IPV6_TCP:
-                cout << "TCP\n";
-                end = true;
-                break;
-            case IPV6_UDP:
-                cout << "UDP\n";
-                end = true;
-                break;
-            case IPV6_ICMP:
-                cout << "ICMP\n";
-                end = true;
-                break;
-            case IPV6_NONEXT:
-                cout << "Unknown\n";
-                end = true;
-                break;
-
-            default:
-                if (is_other_ext(n_header))
-                {
-                    n_header_p = (n_header_p + *(n_header_p + 1));
-                    n_header = *n_header_p;
-                }
-                else
-                {
-                    end = true;
-                }
-
-                break;
-            }
-
-        } while (!end);
+        ipv6_handler(bytes, h);
     }
     else if (ether_type == ETHERTYPE_ARP)
     {
-        printf("ARP\n");
+        arp_handler(bytes, h);
     }
 }
 

@@ -16,7 +16,6 @@
 #define IPV6_ICMP 58
 #define IPV6_NONEXT 59
 
-#define ETH_H_LEN 14
 
 /**
  * @brief Possible codes of extension headers
@@ -46,7 +45,7 @@ const u_char *skip_ether_header(const u_char *bytes);
 
 // ##################### INTERNET ######################
 #define IPv4_ADDRESS_LEN 20
-#define NO_PORT 0
+#define NO_PORT -1
 void extract_ipv4(u_char *where, std::string *ip);
 
 void get_ipv4(u_char *packet, char *src_ip, char *dst_ip);
